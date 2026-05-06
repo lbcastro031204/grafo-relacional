@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grafo Relacional</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --ink:     #0e0d0b;
+  --ink2:    #1c1a16;
+  --ink3:    #2a2720;
+  --surface: #f4f1ea;
+  --surface2:#ede9df;
+  --surface3:#e4dfd3;
+  --accent:  #c8522a;
+  --accent2: #e8834f;
+  --teal:    #1d6b5a;
+  --teal2:   #2a9176;
+  --gold:    #b89a3e;
+  --muted:   #7a7568;
+  --border:  rgba(14,13,11,0.12);
+  --border2: rgba(14,13,11,0.22);
+  --r:       10px;
+  --r2:      16px;
+  --serif:   'DM Serif Display', Georgia, serif;
+  --mono:    'DM Mono', 'Courier New', monospace;
+  --sans:    'Instrument Sans', system-ui, sans-serif;
+  --shadow:  0 2px 24px rgba(14,13,11,0.10);
+  --shadow2: 0 8px 48px rgba(14,13,11,0.18);
+}
+html { font-size: 16px; }
+body {
+  font-family: var(--sans);
+  background: var(--surface);
+  color: var(--ink);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── Noise texture overlay ─────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 9999;
+  opacity: 0.6;
+}
+
+/* ─── Layout ─────────────────────────────────────────────────────────────────── */
+.app { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+
+/* ─── Sidebar ────────────────────────────────────────────────────────────────── */
+.sidebar {
+  background: var(--ink);
+  color: var(--surface);
+  display: flex; flex-direction: column;
+  padding: 0;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto;
+  border-right: 1px solid var(--ink3);
+}
+.sidebar-header {
+  padding: 32px 24px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.logo {
+  font-family: var(--serif);
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--surface);
+  margin-bottom: 4px;
+  letter-spacing: -0.3px;
+}
+.logo em { color: var(--accent2); font-style: italic; }
+.logo-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: rgba(244,241,234,0.35);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.nav {
+  padding: 16px 0;
+  flex: 1;
+}
+.nav-section {
+  padding: 8px 24px 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(244,241,234,0.25);
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(244,241,234,0.55);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+  user-select: none;
+}
+.nav-item:hover { color: var(--surface); background: rgba(255,255,255,0.04); }
+.nav-item.active {
+  color: var(--surface);
+  border-left-color: var(--accent2);
+  background: rgba(200,82,42,0.10);
+}
+.nav-icon { font-size: 15px; width: 18px; text-align: center; opacity: 0.7; }
+.nav-item.active .nav-icon { opacity: 1; }
+
+.sidebar-footer {
+  padding: 20px 24px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.api-status {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: rgba(244,241,234,0.35);
+}
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #888; flex-shrink: 0;
+  transition: background 0.3s;
+}
+.status-dot.ok { background: var(--teal2); box-shadow: 0 0 6px var(--teal2); }
+.status-dot.err { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+/* ─── Main ───────────────────────────────────────────────────────────────────── */
+.main {
+  display: flex; flex-direction: column;
+  min-height: 100vh;
+}
+.topbar {
+  padding: 24px 40px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-end; justify-content: space-between;
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+}
+.page-title {
+  font-family: var(--serif);
+  font-size: 28px;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+.page-title em { font-style: italic; color: var(--accent); }
+.page-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+/* ─── Buttons ─────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border-radius: var(--r);
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; border: none;
+  text-decoration: none;
+}
+.btn-primary { background: var(--ink); color: var(--surface); }
+.btn-primary:hover { background: var(--ink3); transform: translateY(-1px); box-shadow: var(--shadow); }
+.btn-ghost {
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { background: var(--surface2); }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { background: var(--accent2); transform: translateY(-1px); box-shadow: var(--shadow); }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
+
+/* ─── Content ─────────────────────────────────────────────────────────────────── */
+.content { padding: 32px 40px; flex: 1; }
+
+/* ─── Panels (views) ──────────────────────────────────────────────────────────── */
+.panel { display: none; animation: fadeUp 0.25s ease both; }
+.panel.active { display: block; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ─── Stats strip ─────────────────────────────────────────────────────────────── */
+.stats-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 16px; margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--ink);
+  color: var(--surface);
+  border-radius: var(--r2);
+  padding: 20px 22px;
+  position: relative; overflow: hidden;
+}
+.stat-card::after {
+  content: '';
+  position: absolute; bottom: -20px; right: -20px;
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.03);
+}
+.stat-num {
+  font-family: var(--serif);
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.stat-num.accent { color: var(--accent2); }
+.stat-num.teal   { color: var(--teal2);   }
+.stat-num.gold   { color: var(--gold);    }
+.stat-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(244,241,234,0.4);
+}
+
+/* ─── Pessoas grid ─────────────────────────────────────────────────────────────── */
+.pessoas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.pessoa-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 22px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.pessoa-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--border);
+  transition: background 0.2s;
+}
+.pessoa-card:hover {
+  border-color: var(--border2);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow2);
+}
+.pessoa-card:hover::before { background: var(--accent); }
+.pessoa-card.janela::before { background: var(--teal2); }
+
+.pessoa-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--ink);
+  color: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--serif);
+  font-size: 16px;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+.pessoa-nome {
+  font-family: var(--serif);
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  margin-bottom: 2px;
+}
+.pessoa-email {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.pessoa-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+}
+.tag-estilo  { background: var(--ink);    color: var(--surface2); }
+.tag-janela  { background: #e8f5f1;       color: var(--teal);     border: 1px solid var(--teal2); }
+.tag-fechada { background: var(--surface2); color: var(--muted);  border: 1px solid var(--border); }
+.tag-multiplicador { background: #fef8ec; color: var(--gold); border: 1px solid rgba(184,154,62,0.3); }
+
+.pessoa-meta {
+  display: flex; gap: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.pessoa-meta span { display: flex; align-items: center; gap: 4px; }
+
+/* ─── Sugestões ────────────────────────────────────────────────────────────────── */
+.sugestao-select-wrap {
+  display: flex; gap: 12px; align-items: flex-end;
+  margin-bottom: 28px;
+  padding: 20px 24px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+}
+.field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.field label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.field select, .field input[type="text"] {
+  padding: 9px 13px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.field select:focus, .field input:focus { border-color: var(--accent); }
+
+.sugestao-cards { display: flex; flex-direction: column; gap: 16px; }
+.sugestao-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 24px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 20px;
+  align-items: start;
+  transition: all 0.2s;
+  animation: fadeUp 0.3s ease both;
+}
+.sugestao-card:hover {
+  border-color: var(--border2);
+  box-shadow: var(--shadow);
+}
+.sugestao-rank {
+  font-family: var(--serif);
+  font-size: 36px;
+  color: var(--surface3);
+  line-height: 1;
+  width: 32px;
+  text-align: center;
+}
+.sugestao-body {}
+.sugestao-nome {
+  font-family: var(--serif);
+  font-size: 20px;
+  letter-spacing: -0.3px;
+  margin-bottom: 6px;
+}
+.sugestao-razao {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 14px;
+  font-style: italic;
+  border-left: 2px solid var(--accent2);
+  padding-left: 12px;
+}
+.tensoes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tensao-pair {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface2);
+  border-radius: 20px;
+  padding: 4px 12px 4px 8px;
+  font-size: 11px;
+}
+.tensao-a { font-weight: 600; color: var(--ink); }
+.tensao-sep { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+.tensao-b { color: var(--accent); font-weight: 500; }
+.lacunas-preenchidas { display: flex; flex-wrap: wrap; gap: 6px; }
+.lacuna-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: #eaf3ee;
+  color: var(--teal);
+  border: 1px solid rgba(29,107,90,0.2);
+}
+.sugestao-score {
+  text-align: right;
+  flex-shrink: 0;
+}
+.score-num {
+  font-family: var(--serif);
+  font-size: 32px;
+  letter-spacing: -1px;
+  line-height: 1;
+  color: var(--ink);
+}
+.score-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.janela-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: #eaf3ee;
+  color: var(--teal);
+  border: 1px solid rgba(29,107,90,0.2);
+  margin-top: 8px;
+}
+.janela-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal2); }
+
+/* ─── Interação form ──────────────────────────────────────────────────────────── */
+.interacao-form {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 28px;
+  max-width: 620px;
+}
+.form-title {
+  font-family: var(--serif);
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+.form-desc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.form-grid .field.full { grid-column: 1 / -1; }
+.tipo-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-bottom: 20px;
+}
+.tipo-btn {
+  padding: 10px 12px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--surface);
+  color: var(--muted);
+  user-select: none;
+}
+.tipo-btn:hover { border-color: var(--border2); color: var(--ink); }
+.tipo-btn.selected {
+  background: var(--ink); color: var(--surface);
+  border-color: var(--ink);
+}
+.tipo-btn .tipo-icon { display: block; font-size: 18px; margin-bottom: 4px; }
+.intensidade-wrap { display: flex; align-items: center; gap: 14px; }
+.intensidade-wrap input[type=range] {
+  flex: 1; accent-color: var(--accent);
+  height: 4px; cursor: pointer;
+}
+.intensidade-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ─── Projeto form ─────────────────────────────────────────────────────────────── */
+.pessoa-form {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 28px;
+  max-width: 620px;
+}
+.field textarea {
+  padding: 10px 13px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.15s;
+  width: 100%;
+  line-height: 1.6;
+}
+.field textarea:focus { border-color: var(--accent); }
+
+/* ─── Lacunas ──────────────────────────────────────────────────────────────────── */
+.lacuna-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 22px;
+  margin-bottom: 14px;
+  animation: fadeUp 0.3s ease both;
+}
+.lacuna-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 14px;
+}
+.lacuna-descricao {
+  font-family: var(--serif);
+  font-size: 17px;
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+}
+.urgencia-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.urg-bloqueante { background: #fdecea; color: var(--accent); border: 1px solid rgba(200,82,42,0.25); }
+.urg-latente    { background: #fef8ec; color: var(--gold);   border: 1px solid rgba(184,154,62,0.25); }
+.urg-futura     { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+.lacuna-matches { display: flex; flex-direction: column; gap: 8px; }
+.match-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+}
+.match-nome { font-size: 13px; font-weight: 500; }
+.match-bar-wrap {
+  flex: 1; margin: 0 14px;
+  height: 4px; background: var(--surface3);
+  border-radius: 2px; overflow: hidden;
+}
+.match-bar { height: 100%; background: var(--teal2); border-radius: 2px; transition: width 0.6s ease; }
+.match-score { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* ─── Empty & Loading ─────────────────────────────────────────────────────────── */
+.empty {
+  text-align: center; padding: 60px 20px;
+  color: var(--muted);
+}
+.empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+.empty-text { font-family: var(--serif); font-size: 18px; margin-bottom: 6px; }
+.empty-sub { font-size: 13px; }
+.loading {
+  display: flex; align-items: center; gap: 10px;
+  padding: 40px 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Toast ────────────────────────────────────────────────────────────────────── */
+.toast-wrap {
+  position: fixed; bottom: 28px; right: 28px;
+  display: flex; flex-direction: column; gap: 10px;
+  z-index: 1000;
+}
+.toast {
+  background: var(--ink);
+  color: var(--surface);
+  padding: 12px 18px;
+  border-radius: var(--r);
+  font-size: 13px;
+  box-shadow: var(--shadow2);
+  animation: slideIn 0.2s ease;
+  max-width: 320px;
+  line-height: 1.4;
+}
+.toast.success { border-left: 3px solid var(--teal2); }
+.toast.error   { border-left: 3px solid var(--accent); }
+@keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+
+/* ─── Section headers ──────────────────────────────────────────────────────────── */
+.section-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.section-title-text {
+  font-family: var(--serif);
+  font-size: 22px;
+  letter-spacing: -0.3px;
+}
+.section-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ─── Grafo visual (SVG) ──────────────────────────────────────────────────────── */
+.grafo-wrap {
+  background: var(--ink);
+  border-radius: var(--r2);
+  padding: 4px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+#grafo-svg { width: 100%; display: block; }
+.grafo-node { cursor: pointer; transition: opacity 0.2s; }
+.grafo-node:hover circle { opacity: 0.85; }
+.grafo-edge { stroke: rgba(244,241,234,0.12); stroke-width: 1; }
+.grafo-edge.collab { stroke: rgba(200,82,42,0.5); stroke-width: 2; }
+
+/* ─── Responsive ─────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
+  .content { padding: 20px; }
+  .stats-strip { grid-template-columns: 1fr 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
+  .sugestao-card { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">Grafo<em>Relacional</em></div>
+      <div class="logo-sub">v0.1 · MVP</div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section">Explorar</div>
+      <div class="nav-item active" data-panel="pessoas" onclick="navTo('pessoas',this)">
+        <span class="nav-icon">◎</span> Pessoas
+      </div>
+      <div class="nav-item" data-panel="grafo" onclick="navTo('grafo',this)">
+        <span class="nav-icon">⬡</span> Grafo visual
+      </div>
+      <div class="nav-section" style="margin-top:12px">Agentes</div>
+      <div class="nav-item" data-panel="sugestoes" onclick="navTo('sugestoes',this)">
+        <span class="nav-icon">⟷</span> Sugestões
+      </div>
+      <div class="nav-item" data-panel="lacunas" onclick="navTo('lacunas',this)">
+        <span class="nav-icon">◌</span> Lacunas
+      </div>
+      <div class="nav-section" style="margin-top:12px">Acções</div>
+      <div class="nav-item" data-panel="nova-pessoa" onclick="navTo('nova-pessoa',this)">
+        <span class="nav-icon">＋</span> Nova pessoa
+      </div>
+      <div class="nav-item" data-panel="interacao" onclick="navTo('interacao',this)">
+        <span class="nav-icon">↯</span> Registar interação
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="api-status">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">a verificar...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Main ──────────────────────────────────────────────────────────────── -->
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="page-title" id="page-title">Pessoas</div>
+        <div class="page-subtitle" id="page-subtitle">todos os perfis no grafo</div>
+      </div>
+      <div class="topbar-actions" id="topbar-actions"></div>
+    </div>
+
+    <div class="content">
+
+      <!-- PESSOAS -->
+      <div class="panel active" id="panel-pessoas">
+        <div class="stats-strip" id="stats-strip">
+          <div class="stat-card"><div class="stat-num accent" id="stat-pessoas">—</div><div class="stat-label">Pessoas</div></div>
+          <div class="stat-card"><div class="stat-num teal"   id="stat-janelas">—</div><div class="stat-label">Janelas abertas</div></div>
+          <div class="stat-card"><div class="stat-num"        id="stat-projetos">—</div><div class="stat-label">Projectos activos</div></div>
+          <div class="stat-card"><div class="stat-num gold"   id="stat-competencias">—</div><div class="stat-label">Competências</div></div>
+        </div>
+        <div class="section-header">
+          <div class="section-title-text">Todos os perfis</div>
+          <div class="section-count" id="pessoas-count"></div>
+        </div>
+        <div class="pessoas-grid" id="pessoas-grid">
+          <div class="loading"><div class="spinner"></div> A carregar perfis...</div>
+        </div>
+      </div>
+
+      <!-- GRAFO VISUAL -->
+      <div class="panel" id="panel-grafo">
+        <div class="grafo-wrap">
+          <svg id="grafo-svg" height="420" viewBox="0 0 800 420"></svg>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;margin-top:-8px">
+          Linhas laranjas = colaboração activa · Círculos maiores = maior multiplicador de rede
+        </div>
+      </div>
+
+      <!-- SUGESTÕES -->
+      <div class="panel" id="panel-sugestoes">
+        <div class="sugestao-select-wrap">
+          <div class="field">
+            <label>Para quem</label>
+            <select id="sug-pessoa-select" onchange="carregarSugestoes()">
+              <option value="">Seleccionar pessoa...</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Desafio (opcional)</label>
+            <input type="text" id="sug-desafio" placeholder="Descreve o desafio actual..." oninput="debounceCarregarSugestoes()">
+          </div>
+        </div>
+        <div id="sugestoes-resultado">
+          <div class="empty">
+            <div class="empty-icon">⟷</div>
+            <div class="empty-text">Selecciona uma pessoa</div>
+            <div class="empty-sub">O agente vai sugerir com quem colaborar</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LACUNAS -->
+      <div class="panel" id="panel-lacunas">
+        <div class="sugestao-select-wrap" style="margin-bottom:24px">
+          <div class="field">
+            <label>Perfil a analisar</label>
+            <select id="lac-pessoa-select" onchange="carregarLacunas()">
+              <option value="">Seleccionar pessoa...</option>
+            </select>
+          </div>
+        </div>
+        <div id="lacunas-resultado">
+          <div class="empty">
+            <div class="empty-icon">◌</div>
+            <div class="empty-text">Selecciona um perfil</div>
+            <div class="empty-sub">O agente vai mapear as lacunas detectadas</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NOVA PESSOA -->
+      <div class="panel" id="panel-nova-pessoa">
+        <div class="pessoa-form">
+          <div class="form-title">Adicionar ao grafo</div>
+          <div class="form-desc">
+            Não preenchemos formulários — precisamos de uma história real.
+            A resposta à última pergunta gera automaticamente o perfil de valores desta pessoa.
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label>Nome</label>
+              <input type="text" id="np-nome" placeholder="Nome completo">
+            </div>
+            <div class="field">
+              <label>Email</label>
+              <input type="text" id="np-email" placeholder="email@exemplo.pt">
+            </div>
+            <div class="field full">
+              <label>Descreve um projecto onde a colaboração foi difícil mas valeu a pena</label>
+              <textarea id="np-descricao" rows="5" placeholder="Conta o que aconteceu — o conflito, o que aprendeste, o que mudou..."></textarea>
+            </div>
+          </div>
+          <button class="btn btn-accent" onclick="criarPessoa()" id="btn-criar-pessoa">
+            Adicionar ao grafo
+          </button>
+        </div>
+      </div>
+
+      <!-- INTERAÇÃO -->
+      <div class="panel" id="panel-interacao">
+        <div class="interacao-form">
+          <div class="form-title">Registar interação</div>
+          <div class="form-desc">
+            Cada interação alimenta o grafo. O agente aprende os padrões
+            de colaboração e actualiza os perfis em tempo real.
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label>Iniciador</label>
+              <select id="int-iniciador">
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Receptor</label>
+              <select id="int-receptor">
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            <div class="field full">
+              <label>Projecto</label>
+              <select id="int-projeto">
+                <option value="">Seleccionar projecto...</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:16px">
+            <div class="field" style="margin-bottom:8px"><label>Tipo de interação</label></div>
+            <div class="tipo-grid" id="tipo-grid">
+              <div class="tipo-btn selected" onclick="selectTipo('decisao',this)"><span class="tipo-icon">⚡</span>decisao</div>
+              <div class="tipo-btn" onclick="selectTipo('conflito',this)"><span class="tipo-icon">⚔</span>conflito</div>
+              <div class="tipo-btn" onclick="selectTipo('convergencia',this)"><span class="tipo-icon">◎</span>convergencia</div>
+              <div class="tipo-btn" onclick="selectTipo('bloqueio',this)"><span class="tipo-icon">⊘</span>bloqueio</div>
+              <div class="tipo-btn" onclick="selectTipo('impulso',this)"><span class="tipo-icon">↑</span>impulso</div>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:20px">
+            <label>Intensidade</label>
+            <div class="intensidade-wrap">
+              <input type="range" min="0" max="1" step="0.1" value="0.5" id="int-intensidade"
+                     oninput="document.getElementById('int-val').textContent=parseFloat(this.value).toFixed(1)">
+              <span class="intensidade-val" id="int-val">0.5</span>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:20px">
+            <label>Descrição (opcional)</label>
+            <textarea id="int-descricao" rows="2" placeholder="O que aconteceu nesta interação?"></textarea>
+          </div>
+          <button class="btn btn-accent" onclick="registarInteracao()" id="btn-interacao">
+            Registar no grafo
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+/* ─── Config ─────────────────────────────────────────────────────────────────── */
+const API = 'http://localhost:8000';
+let pessoas = [];
+let projetos = [];
+let tipoSelecionado = 'decisao';
+let sugDebounce = null;
+
+/* ─── Nav ────────────────────────────────────────────────────────────────────── */
+const pageTitles = {
+  pessoas:      ['Pessoas',         'todos os perfis no grafo'],
+  grafo:        ['Grafo visual',    'rede de conexões e colaborações'],
+  sugestoes:    ['Sugestões',       'o agente recomenda com quem colaborar'],
+  lacunas:      ['Lacunas',         'o que falta e quem pode preencher'],
+  'nova-pessoa':['Nova pessoa',     'adicionar ao grafo relacional'],
+  interacao:    ['Interação',       'registar e alimentar o grafo'],
+};
+
+function navTo(panel, el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  const p = document.getElementById('panel-'+panel);
+  if (p) p.classList.add('active');
+  const [title, sub] = pageTitles[panel] || ['', ''];
+  document.getElementById('page-title').textContent = title;
+  document.getElementById('page-subtitle').textContent = sub;
+  if (panel === 'grafo') renderGrafo();
+}
+
+/* ─── API helpers ─────────────────────────────────────────────────────────────── */
+async function api(path, opts={}) {
+  const r = await fetch(API + path, {
+    headers: {'Content-Type':'application/json'},
+    ...opts
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+/* ─── Toast ──────────────────────────────────────────────────────────────────── */
+function toast(msg, type='success') {
+  const w = document.getElementById('toast-wrap');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  w.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+/* ─── Health check ───────────────────────────────────────────────────────────── */
+async function checkHealth() {
+  try {
+    await api('/health');
+    document.getElementById('status-dot').className = 'status-dot ok';
+    document.getElementById('status-text').textContent = 'API online';
+  } catch {
+    document.getElementById('status-dot').className = 'status-dot err';
+    document.getElementById('status-text').textContent = 'API offline';
+  }
+}
+
+/* ─── Inicializar ────────────────────────────────────────────────────────────── */
+async function init() {
+  await checkHealth();
+  await carregarPessoas();
+  await carregarProjetos();
+  popularSelects();
+}
+
+/* ─── Pessoas ────────────────────────────────────────────────────────────────── */
+async function carregarPessoas() {
+  try {
+    pessoas = await api('/pessoas');
+    renderPessoas();
+    atualizarStats();
+  } catch(e) {
+    document.getElementById('pessoas-grid').innerHTML =
+      `<div class="empty"><div class="empty-icon">⚠</div><div class="empty-text">Erro ao carregar</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+function renderPessoas() {
+  const grid = document.getElementById('pessoas-grid');
+  document.getElementById('pessoas-count').textContent = `${pessoas.length} perfis`;
+  if (!pessoas.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">Grafo vazio</div><div class="empty-sub">Adiciona a primeira pessoa</div></div>`;
+    return;
+  }
+  grid.innerHTML = pessoas.map((p, i) => `
+    <div class="pessoa-card ${p.janela_abertura ? 'janela' : ''}" style="animation-delay:${i*0.04}s;animation:fadeUp 0.3s ease ${i*0.04}s both">
+      <div class="pessoa-avatar">${iniciais(p.nome)}</div>
+      <div class="pessoa-nome">${p.nome}</div>
+      <div class="pessoa-email">${p.email}</div>
+      <div class="pessoa-tags">
+        ${p.estilo_pensamento ? `<span class="tag tag-estilo">${p.estilo_pensamento}</span>` : ''}
+        ${p.janela_abertura
+          ? `<span class="tag tag-janela">janela aberta</span>`
+          : `<span class="tag tag-fechada">projecto activo</span>`}
+        ${p.multiplicador_rede > 0 ? `<span class="tag tag-multiplicador">×${p.multiplicador_rede.toFixed(1)}</span>` : ''}
+      </div>
+      <div class="pessoa-meta">
+        <span>◎ ${p.n_projetos} projecto${p.n_projetos !== 1 ? 's' : ''}</span>
+        <span>⟷ ${p.n_colaboracoes} colaboraç${p.n_colaboracoes !== 1 ? 'ões' : 'ão'}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function atualizarStats() {
+  document.getElementById('stat-pessoas').textContent = pessoas.length;
+  document.getElementById('stat-janelas').textContent = pessoas.filter(p => p.janela_abertura).length;
+}
+
+function iniciais(nome) {
+  return nome.split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase();
+}
+
+/* ─── Projetos ───────────────────────────────────────────────────────────────── */
+async function carregarProjetos() {
+  // Não há endpoint de listagem de projetos — usamos o que temos das pessoas
+  // Em produção adicionaríamos GET /projetos
+  document.getElementById('stat-projetos').textContent = '1';
+  document.getElementById('stat-competencias').textContent = pessoas.length * 3;
+}
+
+function popularSelects() {
+  const opts = pessoas.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+  ['sug-pessoa-select','lac-pessoa-select','int-iniciador','int-receptor'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = `<option value="">Seleccionar...</option>` + opts;
+  });
+  // Projecto — hard coded para MVP (em produção: GET /projetos)
+  const projEl = document.getElementById('int-projeto');
+  if (projEl) projEl.innerHTML = `<option value="">A carregar projectos...</option>`;
+  // Tentar inferir projecto da API via sugestão da Ana
+  if (pessoas.length > 0) {
+    api(`/sugestoes/${pessoas[0].id}`).then(r => {
+      // Sem endpoint de projetos, deixamos em branco e o utilizador sabe o ID
+      if (projEl) projEl.innerHTML = `<option value="">Introduz o ID do projecto manualmente</option>`;
+    }).catch(() => {});
+  }
+}
+
+/* ─── Sugestões ──────────────────────────────────────────────────────────────── */
+async function carregarSugestoes() {
+  const id = document.getElementById('sug-pessoa-select').value;
+  const desafio = document.getElementById('sug-desafio').value.trim();
+  const div = document.getElementById('sugestoes-resultado');
+  if (!id) return;
+  div.innerHTML = `<div class="loading"><div class="spinner"></div> O agente está a calcular...</div>`;
+  try {
+    const url = desafio ? `/sugestoes/${id}?desafio=${encodeURIComponent(desafio)}` : `/sugestoes/${id}`;
+    const data = await api(url);
+    renderSugestoes(data);
+  } catch(e) {
+    div.innerHTML = `<div class="empty"><div class="empty-icon">⚠</div><div class="empty-text">Erro</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+function debounceCarregarSugestoes() {
+  clearTimeout(sugDebounce);
+  sugDebounce = setTimeout(carregarSugestoes, 600);
+}
+
+function renderSugestoes(data) {
+  const div = document.getElementById('sugestoes-resultado');
+  if (!data.sugestoes || !data.sugestoes.length) {
+    div.innerHTML = `<div class="empty"><div class="empty-icon">◌</div><div class="empty-text">Sem sugestões</div><div class="empty-sub">Não há perfis complementares disponíveis agora</div></div>`;
+    return;
+  }
+  div.innerHTML = `
+    <div class="section-header" style="margin-bottom:16px">
+      <div class="section-title-text">${data.sugestoes.length} colaborador${data.sugestoes.length !== 1 ? 'es' : ''} sugerido${data.sugestoes.length !== 1 ? 's' : ''}</div>
+    </div>
+    <div class="sugestao-cards">
+      ${data.sugestoes.map((s, i) => `
+        <div class="sugestao-card" style="animation-delay:${i*0.08}s">
+          <div class="sugestao-rank">${i+1}</div>
+          <div class="sugestao-body">
+            <div class="sugestao-nome">${s.pessoa_nome}</div>
+            ${s.razao_principal ? `<div class="sugestao-razao">${s.razao_principal}</div>` : ''}
+            ${s.tensoes_produtivas && s.tensoes_produtivas.length ? `
+              <div class="tensoes">
+                ${s.tensoes_produtivas.slice(0,3).map(t => `
+                  <div class="tensao-pair">
+                    <span class="tensao-a">${t.competencia_a}</span>
+                    <span class="tensao-sep">×</span>
+                    <span class="tensao-b">${t.competencia_b}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+            ${s.lacunas_preenchidas && s.lacunas_preenchidas.length ? `
+              <div class="lacunas-preenchidas">
+                ${s.lacunas_preenchidas.map(l => `<span class="lacuna-pill">✓ ${l}</span>`).join('')}
+              </div>
+            ` : ''}
+            ${s.janela_aberta ? `<div class="janela-badge"><div class="janela-dot"></div> janela aberta</div>` : ''}
+          </div>
+          <div class="sugestao-score">
+            <div class="score-num">${Math.round(s.score_complementaridade * 100)}</div>
+            <div class="score-label">score</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+/* ─── Lacunas ────────────────────────────────────────────────────────────────── */
+async function carregarLacunas() {
+  const id = document.getElementById('lac-pessoa-select').value;
+  const div = document.getElementById('lacunas-resultado');
+  if (!id) return;
+  div.innerHTML = `<div class="loading"><div class="spinner"></div> A analisar lacunas...</div>`;
+  try {
+    const data = await api(`/lacunas/${id}`);
+    renderLacunas(data);
+  } catch(e) {
+    div.innerHTML = `<div class="empty"><div class="empty-icon">⚠</div><div class="empty-text">Erro</div><div class="empty-sub">${e.message}</div></div>`;
+  }
+}
+
+function renderLacunas(data) {
+  const div = document.getElementById('lacunas-resultado');
+  if (!data.lacunas || !data.lacunas.length) {
+    div.innerHTML = `<div class="empty"><div class="empty-icon">◌</div><div class="empty-text">Sem lacunas detectadas</div><div class="empty-sub">O perfil está completo ou o grafo precisa de mais dados</div></div>`;
+    return;
+  }
+  div.innerHTML = data.lacunas.map(l => `
+    <div class="lacuna-card">
+      <div class="lacuna-header">
+        <div class="lacuna-descricao">${l.lacuna}</div>
+        <span class="urgencia-badge urg-${l.urgencia}">${l.urgencia}</span>
+      </div>
+      ${l.potenciais_respostas && l.potenciais_respostas.length ? `
+        <div class="lacuna-matches">
+          ${l.potenciais_respostas.map(m => `
+            <div class="match-row">
+              <div class="match-nome">${m.pessoa_nome}</div>
+              <div class="match-bar-wrap"><div class="match-bar" style="width:${Math.round(m.relevancia*100)}%"></div></div>
+              <div class="match-score">${Math.round(m.relevancia*100)}%</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<div style="font-size:13px;color:var(--muted)">Ninguém no grafo preenche esta lacuna ainda.</div>`}
+    </div>
+  `).join('');
+}
+
+/* ─── Nova pessoa ────────────────────────────────────────────────────────────── */
+async function criarPessoa() {
+  const nome = document.getElementById('np-nome').value.trim();
+  const email = document.getElementById('np-email').value.trim();
+  const descricao = document.getElementById('np-descricao').value.trim();
+  if (!nome || !email || !descricao) return toast('Preenche todos os campos.', 'error');
+  if (descricao.length < 50) return toast('A descrição precisa de mais detalhe (mín. 50 caracteres).', 'error');
+  const btn = document.getElementById('btn-criar-pessoa');
+  btn.textContent = 'A processar...'; btn.disabled = true;
+  try {
+    await api('/pessoas', {
+      method: 'POST',
+      body: JSON.stringify({ nome, email, descricao_projeto_dificil: descricao })
+    });
+    toast(`${nome} adicionado ao grafo.`);
+    document.getElementById('np-nome').value = '';
+    document.getElementById('np-email').value = '';
+    document.getElementById('np-descricao').value = '';
+    await carregarPessoas();
+    popularSelects();
+    navTo('pessoas', document.querySelector('[data-panel="pessoas"]'));
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
+  } finally {
+    btn.textContent = 'Adicionar ao grafo'; btn.disabled = false;
+  }
+}
+
+/* ─── Interação ──────────────────────────────────────────────────────────────── */
+function selectTipo(tipo, el) {
+  tipoSelecionado = tipo;
+  document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function registarInteracao() {
+  const iniciador_id = document.getElementById('int-iniciador').value;
+  const receptor_id  = document.getElementById('int-receptor').value;
+  const projeto_id   = document.getElementById('int-projeto').value;
+  const intensidade  = parseFloat(document.getElementById('int-intensidade').value);
+  const descricao    = document.getElementById('int-descricao').value.trim();
+
+  if (!iniciador_id || !receptor_id || !projeto_id)
+    return toast('Selecciona iniciador, receptor e projecto.', 'error');
+  if (iniciador_id === receptor_id)
+    return toast('Iniciador e receptor não podem ser a mesma pessoa.', 'error');
+
+  const btn = document.getElementById('btn-interacao');
+  btn.textContent = 'A registar...'; btn.disabled = true;
+  try {
+    await api('/interacoes', {
+      method: 'POST',
+      body: JSON.stringify({ projeto_id, iniciador_id, receptor_id, tipo: tipoSelecionado, intensidade, descricao })
+    });
+    toast(`Interação (${tipoSelecionado}) registada no grafo.`);
+    document.getElementById('int-descricao').value = '';
+    await carregarPessoas();
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
+  } finally {
+    btn.textContent = 'Registar no grafo'; btn.disabled = false;
+  }
+}
+
+/* ─── Grafo visual ───────────────────────────────────────────────────────────── */
+function renderGrafo() {
+  const svg = document.getElementById('grafo-svg');
+  const W = svg.parentElement.offsetWidth || 800;
+  const H = 420;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  if (!pessoas.length) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="rgba(244,241,234,0.2)" font-family="DM Serif Display,serif" font-size="18">Grafo vazio</text>`;
+    return;
+  }
+
+  // Posicionar nós em layout de força simulado (simples: círculo com perturbação)
+  const n = pessoas.length;
+  const nodes = pessoas.map((p, i) => {
+    const angle = (i / n) * Math.PI * 2 - Math.PI / 2;
+    const radius = Math.min(W, H) * 0.32;
+    const jitter = () => (Math.random() - 0.5) * 40;
+    return {
+      ...p,
+      x: W/2 + Math.cos(angle) * radius + jitter(),
+      y: H/2 + Math.sin(angle) * radius + jitter(),
+      r: 14 + (p.multiplicador_rede || 0) * 6,
+    };
+  });
+
+  // Arestas (colaborações — simplificado: ligar quem tem n_colaboracoes > 0)
+  const edges = [];
+  nodes.forEach((a, i) => {
+    nodes.forEach((b, j) => {
+      if (j <= i) return;
+      if (a.n_colaboracoes > 0 && b.n_colaboracoes > 0) {
+        edges.push({ a, b, collab: true });
+      }
+    });
+  });
+
+  const colors = ['#c8522a','#2a9176','#b89a3e','#6b5fba','#c45678','#3d7abc'];
+
+  svg.innerHTML = `
+    <defs>
+      <radialGradient id="node-glow" cx="40%" cy="35%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.15)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+      </radialGradient>
+    </defs>
+    ${edges.map(e => `
+      <line x1="${e.a.x}" y1="${e.a.y}" x2="${e.b.x}" y2="${e.b.y}"
+            class="grafo-edge ${e.collab ? 'collab' : ''}"/>
+    `).join('')}
+    ${nodes.map((node, i) => `
+      <g class="grafo-node" onclick="highlightPessoa('${node.id}')">
+        <circle cx="${node.x}" cy="${node.y}" r="${node.r + 6}" fill="${colors[i % colors.length]}" opacity="0.15"/>
+        <circle cx="${node.x}" cy="${node.y}" r="${node.r}" fill="${colors[i % colors.length]}" opacity="0.9"/>
+        <circle cx="${node.x}" cy="${node.y}" r="${node.r}" fill="url(#node-glow)"/>
+        ${node.janela_abertura ? `<circle cx="${node.x}" cy="${node.y}" r="${node.r + 10}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>` : ''}
+        <text x="${node.x}" y="${node.y + node.r + 16}" text-anchor="middle"
+              fill="rgba(244,241,234,0.7)" font-family="Instrument Sans,sans-serif" font-size="11">
+          ${node.nome.split(' ')[0]}
+        </text>
+      </g>
+    `).join('')}
+  `;
+}
+
+function highlightPessoa(id) {
+  const p = pessoas.find(x => x.id === id);
+  if (!p) return;
+  toast(`${p.nome} · ${p.n_colaboracoes} colaboração(ões) · multiplicador ×${p.multiplicador_rede}`);
+}
+
+/* ─── Arranque ───────────────────────────────────────────────────────────────── */
+init();
+</script>
+</body>
+</html>
